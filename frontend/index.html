@@ -16,7 +16,7 @@
         <p class="subtitle">Enroll users, verify returning users, and explain every matching decision through Kafka, workers, Qdrant, Redis, and a Python inference layer.</p>
         <div class="hero-actions">
           <button id="healthBtn" class="btn primary">Check API Health</button>
-          <button id="tokenBtn" class="btn ghost">Get Demo Token</button>
+          <button id="tokenBtn" class="btn ghost">Get Bearer Token</button>
         </div>
       </div>
       <div class="score-card glass">
@@ -36,8 +36,8 @@
         <input id="apiBase" placeholder="https://your-api.trycloudflare.com" />
       </label>
       <label class="field wide">
-        <span>Bearer Token</span>
-        <textarea id="token" rows="2" placeholder="Click Get Demo Token or paste your JWT"></textarea>
+        <span>Authorization Bearer Token</span>
+        <textarea id="token" rows="2" placeholder="Click Get Bearer Token or paste your JWT"></textarea>
       </label>
     </section>
 
@@ -58,7 +58,7 @@
         </div>
         <label class="dropzone">
           <input name="image" type="file" accept="image/*" required />
-          <span>Upload live photograph</span>
+          <span>Upload live face photograph</span>
           <small>JPEG/PNG, no raw image is stored by backend</small>
         </label>
         <button class="btn primary full" type="submit">Enroll user</button>
@@ -80,7 +80,7 @@
         </div>
         <label class="dropzone">
           <input name="image" type="file" accept="image/*" required />
-          <span>Upload photograph again</span>
+          <span>Upload face photograph again</span>
           <small>Returns MATCHED / PARTIAL_MATCH / NO_MATCH</small>
         </label>
         <button class="btn primary full" type="submit">Verify user</button>
@@ -115,8 +115,8 @@
           <span>Client UI</span><b>→</b><span>Go API</span><b>→</b><span>Kafka</span><b>→</b><span>Worker</span><b>→</b><span>Inference</span><b>→</b><span>Qdrant + Redis</span>
         </div>
         <ul class="checks">
-          <li>Async-first API returns transaction IDs quickly.</li>
-          <li>Worker performs dedup and Re-KYC decisions.</li>
+          <li><b>ACCEPTED</b> means the job is queued. Click <b>Poll until done</b> to see COMPLETED / FAILED.</li>
+          <li>Worker consumes Kafka jobs and performs dedup / Re-KYC decisions.</li>
           <li>Face/name embeddings are stored separately.</li>
           <li>Demographics use non-reversible secure hashing.</li>
           <li>No raw biometric image is persisted.</li>

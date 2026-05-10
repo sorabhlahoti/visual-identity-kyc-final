@@ -77,3 +77,43 @@ kubectl port-forward svc/api 8080:8080
 4. Paste Cloudflare API URL into the frontend.
 
 Full commands are in `working.md`.
+
+---
+
+## Fastest command for Windows demo
+
+After Docker, kubectl, Helm, and kind are installed, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\one_click_windows.ps1 -Target k8s -InferenceMode mock -BuildImages -StartFrontend -StartTunnel
+```
+
+This starts the local Kubernetes demo and opens the frontend. Copy the Cloudflare `https://*.trycloudflare.com` URL from the tunnel window and paste it into the frontend API Base URL.
+
+### Important status behavior
+
+`ACCEPTED` means the API accepted the request and published a Kafka job. It is not the final KYC decision. The final decision appears after the worker processes the event:
+
+```text
+ACCEPTED → PROCESSING → COMPLETED / FAILED
+```
+
+Use the UI button **Poll until done**.
+
+### Mock vs ArcFace
+
+Default local demo mode is:
+
+```text
+EMBEDDING_MODE=mock
+FAIL_IF_NO_FACE=true
+LIVENESS_REQUIRED=false
+```
+
+This keeps local Kubernetes stable while still rejecting images where no face is detected. For real ArcFace mode:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\k8s_use_arcface_inference_windows.ps1 -BuildAndLoadImage
+```
+
+ArcFace needs the ONNX model and more memory. If the image has no face, the inference service returns an error and the transaction becomes `FAILED` with the reason in `/kyc/status/{transaction_id}`.

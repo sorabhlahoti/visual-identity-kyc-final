@@ -111,16 +111,43 @@ function fmtScore(v) {
   return `${Math.round(v * 100)}%`;
 }
 
+function prettyStatus(v) {
+  if (!v) return '—';
+  return String(v).replaceAll('_', ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function prettyReason(reason) {
+  const map = {
+    liveness_passed: ['Liveness passed', '✓'],
+    liveness_failed_or_not_available: ['Liveness failed / not available', '✗'],
+    strong_face_match: ['Strong face match', '✓'],
+    moderate_face_match: ['Moderate face match', '•'],
+    weak_face_match: ['Weak face match', '✗'],
+    name_match: ['Name match', '✓'],
+    name_mismatch_or_not_in_shortlist: ['Name mismatch / not shortlisted', '✗'],
+    demographic_hash_exact_match: ['Demographic hash exact match', '✓'],
+    demographic_hash_mismatch: ['Demographic hash mismatch', '✗'],
+    final_status_MATCHED: ['Final status', 'Matched'],
+    final_status_PARTIAL_MATCH: ['Final status', 'Partial Match'],
+    final_status_NO_MATCH: ['Final status', 'No Match'],
+    final_status_NEW_USER: ['Final status', 'New User'],
+    final_status_ALREADY_EXISTS: ['Final status', 'Already Exists'],
+    final_status_POTENTIAL_FRAUD: ['Final status', 'Potential Fraud'],
+  };
+  return map[reason] || [String(reason).replaceAll('_', ' '), '•'];
+}
+
 function renderStatus(data) {
   const result = data.result || {};
   const details = result.details || {};
   const liveness = details.liveness || {};
   const reasons = details.explainability?.decision_reasons || [];
+  const decision = result.status || data.error || (data.status === 'ACCEPTED' ? 'Waiting for worker...' : data.status);
   $('resultCards').innerHTML = `
-    <div class="result-card"><b>Transaction</b>${data.transaction_id || '—'}<div class="metric"><span>Job type</span><strong>${data.type || '—'}</strong></div><div class="metric"><span>Async status</span><strong>${data.status || result.status || '—'}</strong></div></div>
-    <div class="result-card"><b>Decision</b>${result.status || data.error || 'Waiting for worker...'}<div class="metric"><span>Confidence</span><strong>${fmtScore(result.confidence_score)}</strong></div><div class="metric"><span>DID</span><strong>${result.did ? result.did.slice(0, 28) + '...' : '—'}</strong></div></div>
-    <div class="result-card"><b>Scores</b><div class="metric"><span>Face similarity</span><strong>${fmtScore(details.face_similarity)}</strong></div><div class="metric"><span>Name similarity</span><strong>${fmtScore(details.name_similarity)}</strong></div><div class="metric"><span>Demographic match</span><strong>${typeof details.demographic_match === 'boolean' ? details.demographic_match : '—'}</strong></div><div class="metric"><span>Liveness</span><strong>${fmtScore(liveness.score)}</strong></div></div>
-    <div class="result-card"><b>Explainability</b>${reasons.length ? reasons.map(r => `<div class="metric"><span>${r}</span><strong>✓</strong></div>`).join('') : '<span class="muted">No final decision yet.</span>'}</div>
+    <div class="result-card"><b>Transaction</b>${data.transaction_id || '—'}<div class="metric"><span>Job type</span><strong>${prettyStatus(data.type)}</strong></div><div class="metric"><span>Async status</span><strong>${prettyStatus(data.status || result.status)}</strong></div></div>
+    <div class="result-card"><b>Decision</b>${prettyStatus(decision)}<div class="metric"><span>Confidence</span><strong>${fmtScore(result.confidence_score)}</strong></div><div class="metric"><span>DID</span><strong>${result.did ? result.did.slice(0, 28) + '...' : '—'}</strong></div></div>
+    <div class="result-card"><b>Scores</b><div class="metric"><span>Face similarity</span><strong>${fmtScore(details.face_similarity)}</strong></div><div class="metric"><span>Name similarity</span><strong>${fmtScore(details.name_similarity)}</strong></div><div class="metric"><span>Demographic match</span><strong>${typeof details.demographic_match === 'boolean' ? (details.demographic_match ? 'Yes' : 'No') : '—'}</strong></div><div class="metric"><span>Liveness score</span><strong>${fmtScore(liveness.score)}</strong></div><div class="metric"><span>Liveness passed</span><strong>${typeof liveness.passed === 'boolean' ? (liveness.passed ? 'Yes' : 'No') : '—'}</strong></div></div>
+    <div class="result-card"><b>Explainable scoring</b>${reasons.length ? reasons.map(r => { const [label, value] = prettyReason(r); return `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`; }).join('') : '<span class="muted">No final decision yet. If async status is ACCEPTED, click Poll until done.</span>'}</div>
   `;
 }
 

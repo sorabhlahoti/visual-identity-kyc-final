@@ -15,11 +15,12 @@ env:
   hashPepper: "change-this-very-long-random-secret-before-prod"
   jwtSecret: "change-this-jwt-secret-before-prod"
   didIssuer: "did:web:your-domain.example"
-  # Local kind/Docker Desktop default: use mock embeddings for stable Kubernetes demo.
-  # For real ArcFace mode, use: -f helm/visual-kyc/values-arcface.yaml after mounting/downloading the ONNX model.
+  # Local kind/Docker Desktop default: use mock vectors for stable Kubernetes demo,
+  # but still require a detectable face so non-face images fail properly.
+  # For real ArcFace mode, use values-arcface.yaml after downloading the ONNX model.
   embeddingMode: "mock"
   livenessRequired: "false"
-  failIfNoFace: "false"
+  failIfNoFace: "true"
   arcfaceModelPath: "/app/models/w600k_r50.onnx"
   kafkaConsumerGroup: "kyc-workers-local"
   # Use * for local/demo. For stricter production, set your GitHub Pages URL and Cloudflare API URL.

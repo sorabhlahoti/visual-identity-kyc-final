@@ -44,12 +44,26 @@ class ArcFaceEmbedder:
         self.output_name = self.session.get_outputs()[0].name
 
     def embed(self, image_bytes: bytes) -> Tuple[List[float], str, Dict[str, Any]]:
+        require_liveness = os.getenv("LIVENESS_REQUIRED", "true").lower() in {"1", "true", "yes"}
+
+        # Even in mock mode, optionally decode/detect the face so local demos can reject
+        # images with no human face. The vector is still deterministic/mock, but the
+        # validation behavior matches the production flow better.
         if self.mode == "mock":
-            return self._mock_embedding(image_bytes), "mock-512D-for-tests-only", {"passed": True, "score": 1.0, "reason": "mock_mode", "anti_spoofing": "mock"}
+            if self.fail_if_no_face or require_liveness:
+                image = self._decode(image_bytes)
+                face = self._detect_and_crop(image)
+                live = evaluate_liveness(image, face)
+                if require_liveness and not live.passed:
+                    raise FaceEmbeddingError(f"liveness/anti-spoof check failed: {live.reason}; score={live.score}")
+                live_dict = live.__dict__
+            else:
+                live_dict = {"passed": True, "score": 1.0, "reason": "mock_mode_face_check_disabled", "anti_spoofing": "mock"}
+            return self._mock_embedding(image_bytes), "mock-512D-for-tests-only", live_dict
+
         image = self._decode(image_bytes)
         face = self._detect_and_crop(image)
         live = evaluate_liveness(image, face)
-        require_liveness = os.getenv("LIVENESS_REQUIRED", "true").lower() in {"1", "true", "yes"}
         if require_liveness and not live.passed:
             raise FaceEmbeddingError(f"liveness/anti-spoof check failed: {live.reason}; score={live.score}")
         tensor = self._preprocess(face)

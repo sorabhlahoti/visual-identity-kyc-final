@@ -565,3 +565,105 @@ For GKE later, you will need:
 - Named Cloudflare Tunnel or domain
 
 For now, the free demo path is GitHub Pages + Cloudflare Quick Tunnel.
+
+---
+
+# One-click Windows runner
+
+Use this when you do not want to run every command manually.
+
+## Local Kubernetes demo, stable mode
+
+```powershell
+cd C:\Users\sorab\Desktop\visual-identity-kyc-final
+powershell -ExecutionPolicy Bypass -File .\scripts\one_click_windows.ps1 -Target k8s -InferenceMode mock -BuildImages -StartFrontend
+```
+
+This does:
+
+```text
+1. Selects the kind cluster context
+2. Builds API + worker images
+3. Loads API + worker images into kind
+4. Deploys/updates Helm chart
+5. Uses mock 512D vectors but still checks face presence
+6. Creates Kafka topics
+7. Restarts API/worker
+8. Starts kubectl port-forward on localhost:8080
+9. Opens frontend/index.html
+```
+
+## Local Kubernetes demo + public Cloudflare API URL
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\one_click_windows.ps1 -Target k8s -InferenceMode mock -BuildImages -StartFrontend -StartTunnel
+```
+
+A new PowerShell window will show a URL like:
+
+```text
+https://something.trycloudflare.com
+```
+
+Paste that URL into the frontend **API Base URL** field.
+
+## Switch to real ArcFace mode
+
+Use this only after the stable mock pipeline works.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\k8s_use_arcface_inference_windows.ps1 -BuildAndLoadImage
+```
+
+This downloads/checks the model, builds the inference image, loads it into kind, applies `values-arcface.yaml`, and restarts inference/worker.
+
+Important: `ACCEPTED` is not the final decision. It means the API queued the job. Click **Poll until done** or check `/kyc/status/{transaction_id}` until status becomes `COMPLETED` or `FAILED`.
+
+## Cloudflare tunnel troubleshooting
+
+Use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\live_api_cloudflare_windows.ps1
+```
+
+The script intentionally uses:
+
+```text
+--protocol http2
+--no-autoupdate
+--config <temporary empty config>
+```
+
+Why:
+
+- `--protocol http2` avoids networks that block QUIC/UDP.
+- The empty config avoids accidentally loading an old named-tunnel config that asks for `cert.pem`.
+- Quick Tunnels do not need a Cloudflare account or DNS setup.
+
+If you still see:
+
+```text
+lookup region1.v2.argotunnel.com: i/o timeout
+```
+
+then your Wi-Fi/router/DNS is blocking Cloudflare lookup. Try:
+
+```text
+1. Change DNS to 1.1.1.1 or 8.8.8.8
+2. Try mobile hotspot
+3. Disable VPN/proxy temporarily
+4. Retry the script
+```
+
+## Frontend live on GitHub Pages
+
+1. Push this repo to GitHub.
+2. Go to **Repository → Settings → Pages**.
+3. Choose **Source: GitHub Actions**.
+4. The workflow `.github/workflows/deploy-frontend.yml` publishes only the `frontend/` folder.
+5. Open the GitHub Pages URL.
+6. Paste the Cloudflare Tunnel backend URL into **API Base URL**.
+7. Click **Check API Health** and **Get Bearer Token**.
+
+GitHub Pages hosts only the static UI. The backend still runs locally/kind/GKE and is exposed through Cloudflare Tunnel or a real cloud load balancer.
