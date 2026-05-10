@@ -65,6 +65,8 @@ type KYCResponse struct {
 
 type AcceptedResponse struct {
 	TransactionID string    `json:"transaction_id"`
+	Type          string    `json:"type,omitempty"`
+	KafkaTopic    string    `json:"kafka_topic,omitempty"`
 	Status        string    `json:"status"`
 	Message       string    `json:"message"`
 	StatusURL     string    `json:"status_url"`

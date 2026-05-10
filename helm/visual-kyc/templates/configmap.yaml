@@ -6,6 +6,8 @@ data:
   QDRANT_URL: "http://qdrant:6333"
   EMBEDDER_URL: "http://inference:8001"
   KAFKA_REST_URL: "http://redpanda:8082"
+  KAFKA_TOPIC_ENROLL: {{ .Values.env.kafkaTopicEnroll | quote }}
+  KAFKA_TOPIC_VERIFY: {{ .Values.env.kafkaTopicVerify | quote }}
   KAFKA_CONSUMER_GROUP: {{ .Values.env.kafkaConsumerGroup | quote }}
   METADATA_PATH: "/data/metadata.json"
   EVENT_LOG_PATH: "/data/events.log"

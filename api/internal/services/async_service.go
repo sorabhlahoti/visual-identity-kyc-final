@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"time"
 
 	"visual-kyc/api/internal/config"
@@ -59,9 +60,10 @@ func (s *AsyncService) submit(ctx context.Context, typ, topic string, input doma
 	if err := s.metadata.SaveStatus(domain.StatusRecord{TransactionID: transactionID, Type: typ, Status: domain.StatusAccepted, CallbackURL: input.CallbackURL, CreatedAt: time.Now().UTC()}); err != nil {
 		return nil, err
 	}
+	log.Printf("submit kyc job type=%s topic=%s transaction_id=%s", typ, topic, transactionID)
 	if err := s.publisher.Publish(topic, transactionID, "JOB_SUBMITTED", envelope); err != nil {
 		_ = s.metadata.SaveStatus(domain.StatusRecord{TransactionID: transactionID, Type: typ, Status: domain.StatusFailed, Error: err.Error(), CallbackURL: input.CallbackURL, CreatedAt: time.Now().UTC()})
 		return nil, fmt.Errorf("submit job to kafka failed: %w", err)
 	}
-	return &domain.AcceptedResponse{TransactionID: transactionID, Status: domain.StatusAccepted, Message: "request accepted; processing is asynchronous", StatusURL: "/kyc/status/" + transactionID, AcceptedAt: time.Now().UTC()}, nil
+	return &domain.AcceptedResponse{TransactionID: transactionID, Type: typ, KafkaTopic: topic, Status: domain.StatusAccepted, Message: "request accepted; processing is asynchronous", StatusURL: "/kyc/status/" + transactionID, AcceptedAt: time.Now().UTC()}, nil
 }

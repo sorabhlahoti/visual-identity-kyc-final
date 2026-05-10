@@ -82,14 +82,42 @@ async function getToken() {
   }
 }
 
+function formPreview(form) {
+  return {
+    name: form.elements.name?.value || '',
+    dob: form.elements.dob?.value || '',
+    gender: form.elements.gender?.value || '',
+    image_name: form.querySelector('input[type="file"]')?.files?.[0]?.name || '',
+  };
+}
+
 async function submitJob(form, endpoint, label) {
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
+  clearInterval(state.pollTimer);
+  $('transactionId').value = '';
+  const expectedType = endpoint.includes('verify') ? 'verify' : 'enroll';
+  const expectedTopic = expectedType === 'verify' ? 'kyc_verify' : 'kyc_enroll';
   try {
+    saveConfig();
+    setLog(`${label} submitting`, {
+      api_base_url: state.apiBase,
+      endpoint,
+      expected_type: expectedType,
+      expected_kafka_topic: expectedTopic,
+      form: formPreview(form),
+      token_present: Boolean(state.token),
+      token_preview: state.token ? `${state.token.slice(0, 18)}...` : 'missing',
+    });
     const data = await request(endpoint, { method: 'POST', headers: headers(), body: formToData(form) });
+    if (!data.transaction_id) throw new Error('API did not return transaction_id. Check backend response.');
     $('transactionId').value = data.transaction_id;
-    setLog(`${label} accepted`, data);
-    renderStatus({ transaction_id: data.transaction_id, type: endpoint.includes('verify') ? 'verify' : 'enroll', status: data.status });
+    const warnings = [];
+    if (data.type && data.type !== expectedType) warnings.push(`Expected type ${expectedType}, API returned ${data.type}`);
+    if (data.kafka_topic && data.kafka_topic !== expectedTopic) warnings.push(`Expected Kafka topic ${expectedTopic}, API returned ${data.kafka_topic}`);
+    setLog(`${label} accepted`, { ...data, frontend_expected: { endpoint, type: expectedType, kafka_topic: expectedTopic }, warnings });
+    renderStatus({ transaction_id: data.transaction_id, type: data.type || expectedType, status: data.status, kafka_topic: data.kafka_topic });
+    await pollUntilDone(45);
   } catch (err) {
     setLog(`${label} error`, err.message);
   } finally {
@@ -151,27 +179,49 @@ function renderStatus(data) {
   `;
 }
 
-async function pollUntilDone() {
+async function pollUntilDone(maxAttempts = 45) {
   clearInterval(state.pollTimer);
   $('pollBtn').disabled = true;
+  let attempts = 0;
   try {
-    await checkStatus();
-    state.pollTimer = setInterval(async () => {
-      try {
-        const data = await checkStatus();
-        if (['COMPLETED', 'FAILED'].includes(data.status)) {
+    const first = await checkStatus();
+    if (['COMPLETED', 'FAILED'].includes(first.status)) {
+      $('pollBtn').disabled = false;
+      return first;
+    }
+    return await new Promise((resolve, reject) => {
+      state.pollTimer = setInterval(async () => {
+        attempts += 1;
+        try {
+          const data = await checkStatus();
+          if (['COMPLETED', 'FAILED'].includes(data.status)) {
+            clearInterval(state.pollTimer);
+            $('pollBtn').disabled = false;
+            resolve(data);
+          } else if (attempts >= maxAttempts) {
+            clearInterval(state.pollTimer);
+            $('pollBtn').disabled = false;
+            setLog('Polling timed out', {
+              message: 'The API accepted the job, but it did not finish within the frontend polling window. Check worker logs for this transaction ID.',
+              transaction_id: $('transactionId').value.trim(),
+              api_base_url: state.apiBase,
+              next_command: `kubectl logs deployment/worker --since=20m | Select-String "${$('transactionId').value.trim()}"`,
+              last_status: data,
+            });
+            resolve(data);
+          }
+        } catch (err) {
           clearInterval(state.pollTimer);
           $('pollBtn').disabled = false;
+          setLog('Polling error', err.message);
+          reject(err);
         }
-      } catch (err) {
-        clearInterval(state.pollTimer);
-        $('pollBtn').disabled = false;
-        setLog('Polling error', err.message);
-      }
-    }, 1800);
+      }, 1800);
+    });
   } catch (err) {
     $('pollBtn').disabled = false;
     setLog('Status error', err.message);
+    throw err;
   }
 }
 
@@ -185,4 +235,5 @@ $('clearLogBtn').addEventListener('click', () => setLog('Ready.', ''));
 $('enrollForm').addEventListener('submit', (e) => { e.preventDefault(); submitJob(e.currentTarget, '/kyc/enroll', 'Enroll'); });
 $('verifyForm').addEventListener('submit', (e) => { e.preventDefault(); submitJob(e.currentTarget, '/kyc/verify', 'Verify'); });
 
+setLog('Frontend version', { version: 'verify-debug-2026-05-10', note: 'Verify submissions show expected endpoint and Kafka topic. Use this to confirm the browser is calling /kyc/verify on the same backend you watch in kubectl logs.' });
 health();

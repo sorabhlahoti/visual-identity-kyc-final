@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -25,6 +28,7 @@ func main() {
 	cfg := config.Load()
 	cfg.ServiceName = "kyc-worker"
 	logger := logging.New(cfg.ServiceName)
+
 	var metadata storage.MetadataStore
 	if cfg.RedisAddr != "" {
 		metadata = storage.NewRedisMetadataStore(cfg.RedisAddr, cfg.RedisPassword)
@@ -35,45 +39,94 @@ func main() {
 		}
 		metadata = jsonStore
 	}
+
 	vectors := storage.NewQdrantClient(cfg.QdrantURL, cfg.FaceCollection, cfg.NameCollection)
 	if err := retryWithLog(logger, "qdrant ensure collections", 120, 2*time.Second, func() error { return vectors.EnsureCollections(context.Background()) }); err != nil {
 		log.Fatalf("qdrant ensure collections: %v", err)
 	}
+
 	embedder := services.NewHTTPEmbedderClient(cfg.EmbedderURL)
 	if err := retryWithLog(logger, "kafka rest readiness", 120, 2*time.Second, func() error { return messaging.WaitForKafkaREST(context.Background(), cfg.KafkaRESTURL, 5*time.Second) }); err != nil {
 		log.Fatalf("kafka rest not ready: %v", err)
 	}
-	publisher := messaging.NewPrimaryWithAuditPublisher(messaging.NewKafkaRESTPublisherWithOptions(cfg.KafkaRESTURL, time.Duration(cfg.KafkaPublishTimeoutSec)*time.Second, cfg.KafkaPublishRetries), messaging.NewFilePublisher(cfg.EventLogPath))
+
+	publisher := messaging.NewPrimaryWithAuditPublisher(
+		messaging.NewKafkaRESTPublisherWithOptions(cfg.KafkaRESTURL, time.Duration(cfg.KafkaPublishTimeoutSec)*time.Second, cfg.KafkaPublishRetries),
+		messaging.NewFilePublisher(cfg.EventLogPath),
+	)
 	processor := services.NewKYCService(cfg, embedder, vectors, metadata, publisher)
-	consumerName := "worker-" + utils.NewID("node")
-	consumer := messaging.NewKafkaRESTConsumer(cfg.KafkaRESTURL, cfg.KafkaConsumerGroup, consumerName, cfg.KafkaPollTimeoutMS, cfg.KafkaMaxPollRecords)
+	cb := callback.New(time.Duration(cfg.CallbackTimeoutMS) * time.Millisecond)
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-	if err := retryWithLog(logger, "kafka consumer start", 120, 2*time.Second, func() error { return consumer.Start(ctx, []string{cfg.KafkaTopicEnroll, cfg.KafkaTopicVerify}) }); err != nil {
-		log.Fatalf("kafka consumer start: %v", err)
+
+	// Use one Kafka REST consumer per command topic. This avoids a local-dev failure
+	// mode where a single mixed-topic consumer group advances/blocks offsets in a
+	// confusing way and verify requests remain ACCEPTED even though enroll works.
+	// Each consumer group is isolated so enroll traffic cannot hide verify jobs.
+	enrollConsumer := messaging.NewKafkaRESTConsumer(
+		cfg.KafkaRESTURL,
+		cfg.KafkaConsumerGroup+"-enroll",
+		"worker-enroll-"+utils.NewID("node"),
+		cfg.KafkaPollTimeoutMS,
+		cfg.KafkaMaxPollRecords,
+	)
+	verifyConsumer := messaging.NewKafkaRESTConsumer(
+		cfg.KafkaRESTURL,
+		cfg.KafkaConsumerGroup+"-verify",
+		"worker-verify-"+utils.NewID("node"),
+		cfg.KafkaPollTimeoutMS,
+		cfg.KafkaMaxPollRecords,
+	)
+
+	if err := retryWithLog(logger, "kafka enroll consumer start", 120, 2*time.Second, func() error { return enrollConsumer.Start(ctx, []string{cfg.KafkaTopicEnroll}) }); err != nil {
+		log.Fatalf("kafka enroll consumer start: %v", err)
 	}
-	defer consumer.Close(context.Background())
-	cb := callback.New(time.Duration(cfg.CallbackTimeoutMS) * time.Millisecond)
-	logger.Info("worker started", map[string]interface{}{"topics": []string{cfg.KafkaTopicEnroll, cfg.KafkaTopicVerify}, "consumer": consumerName})
+	if err := retryWithLog(logger, "kafka verify consumer start", 120, 2*time.Second, func() error { return verifyConsumer.Start(ctx, []string{cfg.KafkaTopicVerify}) }); err != nil {
+		log.Fatalf("kafka verify consumer start: %v", err)
+	}
+	defer enrollConsumer.Close(context.Background())
+	defer verifyConsumer.Close(context.Background())
+
+	logger.Info("worker started", map[string]interface{}{
+		"topics": []string{cfg.KafkaTopicEnroll, cfg.KafkaTopicVerify},
+		"mode":   "separate-topic-consumers",
+		"groups": []string{cfg.KafkaConsumerGroup + "-enroll", cfg.KafkaConsumerGroup + "-verify"},
+	})
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go consumeLoop(ctx, &wg, logger, cfg, metadata, processor, cb, enrollConsumer, cfg.KafkaTopicEnroll)
+	go consumeLoop(ctx, &wg, logger, cfg, metadata, processor, cb, verifyConsumer, cfg.KafkaTopicVerify)
+	wg.Wait()
+}
+
+func consumeLoop(ctx context.Context, wg *sync.WaitGroup, logger *logging.Logger, cfg config.Config, metadata storage.MetadataStore, processor *services.KYCService, cb *callback.Client, consumer *messaging.KafkaRESTConsumer, topic string) {
+	defer wg.Done()
+	logger.Info("consumer loop started", map[string]interface{}{"topic": topic})
 	for ctx.Err() == nil {
 		events, err := consumer.Poll(ctx)
 		if err != nil {
-			logger.Error("poll failed", map[string]interface{}{"error": err.Error()})
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				return
+			}
+			logger.Error("poll failed", map[string]interface{}{"topic": topic, "error": err.Error()})
 			time.Sleep(time.Second)
 			continue
 		}
 		if len(events) > 0 {
-			logger.Info("events polled", map[string]interface{}{"count": len(events)})
+			logger.Info("events polled", map[string]interface{}{"topic": topic, "count": len(events)})
 		}
 		for _, evt := range events {
 			if evt.Type != "JOB_SUBMITTED" {
+				logger.Info("event ignored", map[string]interface{}{"topic": topic, "event_type": evt.Type, "transaction_id": evt.TransactionID})
 				continue
 			}
 			logger.Info("job received", map[string]interface{}{"transaction_id": evt.TransactionID, "event_type": evt.Type, "topic": evt.Topic})
 			if err := processEvent(ctx, cfg, metadata, processor, cb, evt); err != nil {
-				logger.Error("job failed", map[string]interface{}{"transaction_id": evt.TransactionID, "error": err.Error()})
+				logger.Error("job failed", map[string]interface{}{"transaction_id": evt.TransactionID, "topic": topic, "error": err.Error()})
 			} else {
-				logger.Info("job completed", map[string]interface{}{"transaction_id": evt.TransactionID})
+				logger.Info("job completed", map[string]interface{}{"transaction_id": evt.TransactionID, "topic": topic})
 			}
 		}
 	}
@@ -125,8 +178,10 @@ func processEvent(ctx context.Context, cfg config.Config, metadata storage.Metad
 	var resp *domain.KYCResponse
 	if job.Type == "enroll" {
 		resp, err = processor.ProcessEnroll(ctx, job.TransactionID, input)
-	} else {
+	} else if job.Type == "verify" {
 		resp, err = processor.ProcessVerify(ctx, job.TransactionID, input)
+	} else {
+		return fail(errors.New("unknown job type: " + strings.TrimSpace(job.Type)))
 	}
 	if err != nil {
 		return fail(err)

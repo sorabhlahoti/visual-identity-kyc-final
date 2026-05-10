@@ -667,3 +667,82 @@ then your Wi-Fi/router/DNS is blocking Cloudflare lookup. Try:
 7. Click **Check API Health** and **Get Bearer Token**.
 
 GitHub Pages hosts only the static UI. The backend still runs locally/kind/GKE and is exposed through Cloudflare Tunnel or a real cloud load balancer.
+
+---
+
+## Fix: verify stuck at ACCEPTED while enroll completes
+
+If enroll completes but verify stays `ACCEPTED` and the verify transaction ID never appears in worker logs, rebuild the patched worker and reset only the local Kafka command topics:
+
+```powershell
+cd C:\Users\sorab\Desktop\visual-identity-kyc-final
+powershell -ExecutionPolicy Bypass -File .\scripts\k8s_fix_verify_worker_windows.ps1
+```
+
+What this does:
+
+1. Rebuilds the worker image.
+2. Loads the worker image into the `kind` cluster.
+3. Upgrades the Helm release.
+4. Deletes and recreates only `kyc_enroll` and `kyc_verify` topics.
+5. Restarts a single worker.
+6. Prints worker logs.
+
+After running it, submit a **new** verify request. Do not reuse old `ACCEPTED` transaction IDs.
+
+Expected worker logs for verify:
+
+```text
+consumer loop started topic=kyc_verify
+job received topic=kyc_verify
+job completed topic=kyc_verify
+```
+
+## Verify endpoint troubleshooting / fixed flow
+
+If `/kyc/enroll` completes but `/kyc/verify` stays `ACCEPTED`, run the end-to-end verify fixer. It rebuilds API + worker when requested, explicitly sets Kafka topics, resets local Kafka topics, restarts API/worker, submits a verify request, and checks that the accepted response says `kafka_topic: kyc_verify`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\k8s_fix_verify_end_to_end_windows.ps1 -BuildImages -ImagePath .\Self_image1.jpg -InferenceMode arcface
+```
+
+Expected accepted response must include:
+
+```json
+{
+  "type": "verify",
+  "kafka_topic": "kyc_verify",
+  "status": "ACCEPTED"
+}
+```
+
+Then worker logs should show:
+
+```text
+consumer loop started topic=kyc_verify
+job received topic=kyc_verify
+job completed topic=kyc_verify
+```
+
+
+## Frontend verify debugging
+
+If PowerShell `/kyc/verify` reaches worker but frontend `/kyc/verify` does not, check these in order:
+
+1. In the frontend `API Base URL`, use exactly the same backend you watch in Kubernetes logs.
+   - Local kind: `http://localhost:8080`
+   - GitHub Pages: use your `https://...trycloudflare.com` URL. Do not use `http://localhost:8080` from GitHub Pages.
+2. Refresh browser with cache clear: `Ctrl + Shift + R`.
+3. Open DevTools -> Network -> click the `kyc/verify` request.
+4. Confirm:
+   - Request URL ends with `/kyc/verify`
+   - Response contains `"type":"verify"`
+   - Response contains `"kafka_topic":"kyc_verify"`
+5. If the response does not contain `kafka_topic`, your browser is hitting an old backend image or old cached frontend.
+6. Run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\debug_frontend_verify_windows.ps1
+```
+
+The updated frontend prints the expected endpoint and expected Kafka topic before submitting, and it has a finite poll timeout so it no longer waits forever silently.

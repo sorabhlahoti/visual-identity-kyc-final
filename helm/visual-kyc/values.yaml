@@ -23,6 +23,8 @@ env:
   failIfNoFace: "true"
   arcfaceModelPath: "/app/models/w600k_r50.onnx"
   kafkaConsumerGroup: "kyc-workers-local"
+  kafkaTopicEnroll: "kyc_enroll"
+  kafkaTopicVerify: "kyc_verify"
   # Use * for local/demo. For stricter production, set your GitHub Pages URL and Cloudflare API URL.
   corsAllowedOrigins: "*"
 
