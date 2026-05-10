@@ -1,0 +1,58 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+inference/.venv/
+inference/models/*.onnx
+!inference/models/.gitkeep
+
+# Go
+bin/
+coverage.out
+*.test
+
+# Node / frontend
+node_modules/
+dist/
+build/
+
+# Local data / vector stores / logs
+data/
+*.log
+*.db
+*.sqlite
+qdrant_storage/
+redis-data/
+redpanda-data/
+
+# Docker / temp
+.tmp/
+tmp/
+images-tar*/
+
+# User test images - keep private biometric samples out of git
+Self_image*.jpg
+self_image*.jpg
+*.jpeg
+*.png
+*.webp
+!docs/**/*.png
+!frontend/**/*.png

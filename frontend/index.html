@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Visual Identity KYC</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1220'/%3E%3Cpath d='M18 39c4-9 24-9 28 0' stroke='%236ee7b7' stroke-width='5' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='24' r='9' stroke='%2393c5fd' stroke-width='5' fill='none'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Async AI Identity Resolution</p>
+        <h1>Visual Identity KYC System</h1>
+        <p class="subtitle">Enroll users, verify returning users, and explain every matching decision through Kafka, workers, Qdrant, Redis, and a Python inference layer.</p>
+        <div class="hero-actions">
+          <button id="healthBtn" class="btn primary">Check API Health</button>
+          <button id="tokenBtn" class="btn ghost">Get Demo Token</button>
+        </div>
+      </div>
+      <div class="score-card glass">
+        <span class="status-dot" id="healthDot"></span>
+        <strong id="healthText">API not checked</strong>
+        <p id="healthDetails">Set your backend URL, then check health.</p>
+      </div>
+    </section>
+
+    <section class="config-card glass">
+      <div>
+        <h2>Backend connection</h2>
+        <p>For GitHub Pages, paste your Cloudflare Tunnel HTTPS API URL here. For local Docker/kind, use <code>http://localhost:8080</code>.</p>
+      </div>
+      <label class="field wide">
+        <span>API Base URL</span>
+        <input id="apiBase" placeholder="https://your-api.trycloudflare.com" />
+      </label>
+      <label class="field wide">
+        <span>Bearer Token</span>
+        <textarea id="token" rows="2" placeholder="Click Get Demo Token or paste your JWT"></textarea>
+      </label>
+    </section>
+
+    <section class="grid two">
+      <form id="enrollForm" class="panel glass">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">KYC Enrollment</p>
+            <h2>Create identity</h2>
+          </div>
+          <span class="pill">POST /kyc/enroll</span>
+        </div>
+        <div class="form-grid">
+          <label class="field"><span>Name</span><input name="name" value="John Doe" required /></label>
+          <label class="field"><span>DOB</span><input name="dob" type="date" value="1990-01-01" required /></label>
+          <label class="field"><span>Gender</span><input name="gender" value="M" required /></label>
+          <label class="field"><span>Callback URL optional</span><input name="callback_url" placeholder="https://..." /></label>
+        </div>
+        <label class="dropzone">
+          <input name="image" type="file" accept="image/*" required />
+          <span>Upload live photograph</span>
+          <small>JPEG/PNG, no raw image is stored by backend</small>
+        </label>
+        <button class="btn primary full" type="submit">Enroll user</button>
+      </form>
+
+      <form id="verifyForm" class="panel glass">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Re-KYC Verification</p>
+            <h2>Verify returning user</h2>
+          </div>
+          <span class="pill">POST /kyc/verify</span>
+        </div>
+        <div class="form-grid">
+          <label class="field"><span>Name</span><input name="name" value="John Doe" required /></label>
+          <label class="field"><span>DOB</span><input name="dob" type="date" value="1990-01-01" required /></label>
+          <label class="field"><span>Gender</span><input name="gender" value="M" required /></label>
+          <label class="field"><span>Callback URL optional</span><input name="callback_url" placeholder="https://..." /></label>
+        </div>
+        <label class="dropzone">
+          <input name="image" type="file" accept="image/*" required />
+          <span>Upload photograph again</span>
+          <small>Returns MATCHED / PARTIAL_MATCH / NO_MATCH</small>
+        </label>
+        <button class="btn primary full" type="submit">Verify user</button>
+      </form>
+    </section>
+
+    <section class="grid two">
+      <div class="panel glass">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Transaction Status</p>
+            <h2>Track async result</h2>
+          </div>
+          <span class="pill">GET /kyc/status/:id</span>
+        </div>
+        <label class="field wide"><span>Transaction ID</span><input id="transactionId" placeholder="txn_..." /></label>
+        <div class="hero-actions">
+          <button id="statusBtn" class="btn primary" type="button">Check status</button>
+          <button id="pollBtn" class="btn ghost" type="button">Poll until done</button>
+        </div>
+        <div id="resultCards" class="result-cards"></div>
+      </div>
+
+      <div class="panel glass architecture">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">Architecture</p>
+            <h2>How it works</h2>
+          </div>
+        </div>
+        <div class="flow">
+          <span>Client UI</span><b>→</b><span>Go API</span><b>→</b><span>Kafka</span><b>→</b><span>Worker</span><b>→</b><span>Inference</span><b>→</b><span>Qdrant + Redis</span>
+        </div>
+        <ul class="checks">
+          <li>Async-first API returns transaction IDs quickly.</li>
+          <li>Worker performs dedup and Re-KYC decisions.</li>
+          <li>Face/name embeddings are stored separately.</li>
+          <li>Demographics use non-reversible secure hashing.</li>
+          <li>No raw biometric image is persisted.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="panel glass logs-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Live Response</p>
+          <h2>API output</h2>
+        </div>
+        <button id="clearLogBtn" class="btn ghost" type="button">Clear</button>
+      </div>
+      <pre id="log">Ready.</pre>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

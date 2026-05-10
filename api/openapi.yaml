@@ -1,0 +1,169 @@
+openapi: 3.0.3
+info:
+  title: Visual Identity KYC API
+  version: 1.0.0
+  description: Async-first KYC / Re-KYC API with Kafka, Qdrant vectors, liveness scoring, DID output, and explainable similarity scoring.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        "200": { description: OK }
+  /metrics:
+    get:
+      security: []
+      summary: Prometheus metrics
+      responses:
+        "200": { description: Metrics text }
+  /auth/token:
+    post:
+      security: []
+      summary: Local demo JWT token endpoint
+      responses:
+        "200":
+          description: Demo token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  type: { type: string, example: Bearer }
+  /kyc/enroll:
+    post:
+      summary: KYC enrollment
+      description: Accepts multipart request, returns transaction_id immediately, publishes encrypted job to Kafka topic kyc_enroll.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/KYCRequest'
+      responses:
+        "202":
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+        "400": { description: Invalid request }
+        "401": { description: Missing or invalid JWT }
+        "503": { description: Kafka unavailable }
+  /kyc/verify:
+    post:
+      summary: Re-KYC verification
+      description: Accepts multipart request, returns transaction_id immediately, publishes encrypted job to Kafka topic kyc_verify.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/KYCRequest'
+      responses:
+        "202":
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedResponse'
+  /kyc/status/{transaction_id}:
+    get:
+      summary: Transaction status and final decision
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Transaction record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusRecord'
+        "404": { description: Transaction not found }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    KYCRequest:
+      type: object
+      required: [image, name, dob, gender]
+      properties:
+        image:
+          type: string
+          format: binary
+        name:
+          type: string
+          example: John Doe
+        dob:
+          type: string
+          format: date
+          example: "1990-01-01"
+        gender:
+          type: string
+          example: M
+        callback_url:
+          type: string
+          format: uri
+          description: Optional callback URL for async result delivery.
+    AcceptedResponse:
+      type: object
+      properties:
+        transaction_id: { type: string, example: txn_abc123 }
+        status: { type: string, example: ACCEPTED }
+        message: { type: string }
+        status_url: { type: string, example: /kyc/status/txn_abc123 }
+        accepted_at: { type: string, format: date-time }
+    StatusRecord:
+      type: object
+      properties:
+        transaction_id: { type: string }
+        type: { type: string, enum: [enroll, verify] }
+        status: { type: string, enum: [ACCEPTED, PROCESSING, COMPLETED, FAILED] }
+        result:
+          $ref: '#/components/schemas/KYCResponse'
+        error: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    KYCResponse:
+      type: object
+      properties:
+        transaction_id: { type: string }
+        identity_id: { type: string, format: uuid }
+        did: { type: string, example: did:web:localhost:kyc:abcd1234 }
+        status:
+          type: string
+          enum: [MATCHED, PARTIAL_MATCH, NO_MATCH, ALREADY_EXISTS, NEW_USER, POTENTIAL_FRAUD]
+        confidence_score: { type: number, example: 0.92 }
+        details:
+          type: object
+          properties:
+            candidate_identity_id: { type: string }
+            face_similarity: { type: number, example: 0.95 }
+            name_similarity: { type: number, example: 0.89 }
+            demographic_match: { type: boolean }
+            liveness:
+              type: object
+              properties:
+                passed: { type: boolean }
+                score: { type: number }
+                reason: { type: string }
+                anti_spoofing: { type: string }
+            explainability:
+              type: object
+              properties:
+                face_weight: { type: number, example: 0.65 }
+                name_weight: { type: number, example: 0.25 }
+                demographic_weight: { type: number, example: 0.10 }
+                decision_reasons:
+                  type: array
+                  items: { type: string }

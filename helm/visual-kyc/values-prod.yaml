@@ -1,0 +1,21 @@
+image:
+  api: visual-kyc-api:latest
+  worker: visual-kyc-worker:latest
+  inference: visual-kyc-inference:latest
+  pullPolicy: IfNotPresent
+
+replicaCount:
+  api: 2
+  worker: 2
+  inference: 1
+
+autoscaling:
+  enabled: true
+
+env:
+  authRequired: "true"
+  hashPepper: "change-this-very-long-random-secret-before-prod"
+  jwtSecret: "change-this-jwt-secret-before-prod"
+  didIssuer: "did:web:your-domain.example"
+  embeddingMode: "arcface"
+  livenessRequired: "true"

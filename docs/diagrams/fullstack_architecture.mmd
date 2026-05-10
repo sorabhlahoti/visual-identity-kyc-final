@@ -1,0 +1,31 @@
+flowchart TB
+  subgraph Browser
+    UI[GitHub Pages Frontend]
+  end
+
+  subgraph DemoAccess[Public Demo Access]
+    Tunnel[Cloudflare Tunnel HTTPS URL]
+  end
+
+  subgraph Kubernetes[Local kind / GKE Kubernetes]
+    API[Go API Service\nAuth, CORS, Rate Limit, Status API]
+    Kafka[Redpanda Kafka\nkyc_enroll / kyc_verify]
+    Worker[Go Worker\nDedup + Decision Logic]
+    Infer[Python Inference\nFace 512D + Name 768D + Liveness]
+    Qdrant[Qdrant\nface_embeddings + name_embeddings]
+    Redis[Redis\nstatus + secure metadata]
+    Prom[Prometheus]
+    Grafana[Grafana Dashboard]
+  end
+
+  UI -->|HTTPS fetch + Bearer token| Tunnel
+  Tunnel --> API
+  API -->|publish job| Kafka
+  Kafka -->|consume job| Worker
+  Worker -->|multipart image/name| Infer
+  Worker -->|vector upsert/search| Qdrant
+  Worker -->|status/result| Redis
+  API -->|status read| Redis
+  API --> Prom
+  Worker --> Prom
+  Prom --> Grafana

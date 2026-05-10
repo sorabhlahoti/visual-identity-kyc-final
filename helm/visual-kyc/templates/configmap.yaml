@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: visual-kyc-config
+data:
+  QDRANT_URL: "http://qdrant:6333"
+  EMBEDDER_URL: "http://inference:8001"
+  KAFKA_REST_URL: "http://redpanda:8082"
+  KAFKA_CONSUMER_GROUP: {{ .Values.env.kafkaConsumerGroup | quote }}
+  METADATA_PATH: "/data/metadata.json"
+  EVENT_LOG_PATH: "/data/events.log"
+  REDIS_ADDR: "redis:6379"
+  AUTH_REQUIRED: {{ .Values.env.authRequired | quote }}
+  DID_ISSUER: {{ .Values.env.didIssuer | quote }}
+  EMBEDDING_MODE: {{ .Values.env.embeddingMode | quote }}
+  LIVENESS_REQUIRED: {{ .Values.env.livenessRequired | quote }}
+  FAIL_IF_NO_FACE: {{ .Values.env.failIfNoFace | quote }}
+  ARCFACE_MODEL_PATH: {{ .Values.env.arcfaceModelPath | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.env.corsAllowedOrigins | quote }}

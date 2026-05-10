@@ -1,0 +1,184 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.6
+    container_name: kyc-redpanda
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr
+      - internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr
+      - internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr
+      - redpanda:33145
+      - --advertise-rpc-addr
+      - redpanda:33145
+      - --default-log-level=info
+      - --set
+      - redpanda.auto_create_topics_enabled=true
+    ports:
+      - "19092:19092"
+      - "18082:18082"
+      - "18081:18081"
+      - "19644:9644"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.1.6
+    container_name: kyc-redpanda-init
+    depends_on:
+      - redpanda
+    volumes:
+      - ./scripts/redpanda-init.sh:/redpanda-init.sh:ro
+    entrypoint: ["/bin/sh", "/redpanda-init.sh"]
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: kyc-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: kyc-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  inference:
+    build:
+      context: ./inference
+    container_name: kyc-inference
+    environment:
+      EMBEDDING_MODE: ${EMBEDDING_MODE:-mock}
+      LIVENESS_REQUIRED: ${LIVENESS_REQUIRED:-false}
+      FAIL_IF_NO_FACE: ${FAIL_IF_NO_FACE:-false}
+      ARCFACE_MODEL_PATH: ${ARCFACE_MODEL_PATH:-/app/models/w600k_r50.onnx}
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./inference/models:/app/models
+
+  api:
+    build:
+      context: ./api
+      args:
+        TARGET: server
+    container_name: kyc-api
+    restart: unless-stopped
+    depends_on:
+      redpanda:
+        condition: service_started
+      redis:
+        condition: service_started
+    environment:
+      PORT: 8080
+      SERVICE_NAME: kyc-api
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDER_URL: http://inference:8001
+      KAFKA_REST_URL: http://redpanda:8082
+      KAFKA_PUBLISH_TIMEOUT_SEC: ${KAFKA_PUBLISH_TIMEOUT_SEC:-30}
+      KAFKA_PUBLISH_RETRIES: ${KAFKA_PUBLISH_RETRIES:-6}
+      METADATA_PATH: /data/metadata.json
+      EVENT_LOG_PATH: /data/events.log
+      REDIS_ADDR: redis:6379
+      HASH_PEPPER: ${HASH_PEPPER:-dev-change-this-long-random-secret-min-32-chars}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-this-min-32-chars}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-*}
+      DID_ISSUER: ${DID_ISSUER:-did:web:localhost}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      - app-data:/data
+
+  worker:
+    build:
+      context: ./api
+      args:
+        TARGET: worker
+    container_name: kyc-worker
+    restart: unless-stopped
+    depends_on:
+      redpanda:
+        condition: service_started
+      redpanda-init:
+        condition: service_completed_successfully
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started
+      inference:
+        condition: service_started
+    environment:
+      SERVICE_NAME: kyc-worker
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDER_URL: http://inference:8001
+      KAFKA_REST_URL: http://redpanda:8082
+      KAFKA_PUBLISH_TIMEOUT_SEC: ${KAFKA_PUBLISH_TIMEOUT_SEC:-30}
+      KAFKA_PUBLISH_RETRIES: ${KAFKA_PUBLISH_RETRIES:-6}
+      METADATA_PATH: /data/metadata.json
+      EVENT_LOG_PATH: /data/events.log
+      REDIS_ADDR: redis:6379
+      HASH_PEPPER: ${HASH_PEPPER:-dev-change-this-long-random-secret-min-32-chars}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-this-min-32-chars}
+      DID_ISSUER: ${DID_ISSUER:-did:web:localhost}
+    volumes:
+      - app-data:/data
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: kyc-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui:v5.17.14
+    container_name: kyc-swagger-ui
+    depends_on:
+      - api
+    ports:
+      - "8081:8080"
+    environment:
+      URL: http://localhost:${API_PORT:-8080}/openapi.yaml
+      TRY_IT_OUT_ENABLED: "true"
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: kyc-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+
+volumes:
+  qdrant-data:
+  app-data:
+  grafana-data:
+  redis-data:

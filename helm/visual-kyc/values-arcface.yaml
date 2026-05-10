@@ -1,0 +1,15 @@
+# Use this only when the ArcFace ONNX model is available inside the inference image/pod.
+# Local kind often has low memory, so default values.yaml uses mock mode for stable demo.
+env:
+  embeddingMode: "arcface"
+  livenessRequired: "true"
+  failIfNoFace: "true"
+  arcfaceModelPath: "/app/models/w600k_r50.onnx"
+resources:
+  inference:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "2Gi"
+      cpu: "1500m"

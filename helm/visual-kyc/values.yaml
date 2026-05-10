@@ -1,0 +1,61 @@
+image:
+  api: visual-kyc-api:latest
+  worker: visual-kyc-worker:latest
+  inference: visual-kyc-inference:latest
+  pullPolicy: IfNotPresent
+
+replicaCount:
+  # Local kind defaults. Use values-prod.yaml for cloud/demo scaling.
+  api: 1
+  worker: 1
+  inference: 1
+
+env:
+  authRequired: "true"
+  hashPepper: "change-this-very-long-random-secret-before-prod"
+  jwtSecret: "change-this-jwt-secret-before-prod"
+  didIssuer: "did:web:your-domain.example"
+  # Local kind/Docker Desktop default: use mock embeddings for stable Kubernetes demo.
+  # For real ArcFace mode, use: -f helm/visual-kyc/values-arcface.yaml after mounting/downloading the ONNX model.
+  embeddingMode: "mock"
+  livenessRequired: "false"
+  failIfNoFace: "false"
+  arcfaceModelPath: "/app/models/w600k_r50.onnx"
+  kafkaConsumerGroup: "kyc-workers-local"
+  # Use * for local/demo. For stricter production, set your GitHub Pages URL and Cloudflare API URL.
+  corsAllowedOrigins: "*"
+
+service:
+  api:
+    type: ClusterIP
+    port: 8080
+  inference:
+    port: 8001
+
+ingress:
+  enabled: false
+  className: nginx
+  host: visual-kyc.local
+  tls: false
+
+resources:
+  api: {}
+  worker: {}
+  inference: {}
+
+persistence:
+  enabled: true
+  size: 2Gi
+
+autoscaling:
+  # Disabled by default for local kind to avoid extra pods during debugging.
+  enabled: false
+
+redpanda:
+  image: redpandadata/redpanda:v24.2.14
+
+qdrant:
+  image: qdrant/qdrant:v1.12.4
+
+redis:
+  image: redis:7.4-alpine

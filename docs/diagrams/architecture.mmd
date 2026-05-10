@@ -1,0 +1,14 @@
+flowchart TD
+    C[Client / Postman / Mobile App] --> AG[API Gateway / JWT Auth]
+    AG --> API[KYC API - Go]
+    API -->|202 transaction_id| C
+    API -->|encrypted job event| K[(Kafka-compatible Redpanda Topics\nkyc_enroll / kyc_verify)]
+    W[KYC Worker - Go] -->|poll jobs| K
+    W --> INF[Inference Service - Python + uv\nArcFace 512D + Name 768D + Liveness]
+    W --> Q[(Qdrant Vector DB\nface_embeddings / name_embeddings\nHNSW indexes)]
+    W --> R[(Redis KV Metadata\nhashes / status / DID)]
+    W --> CB[Optional Callback URL]
+    C -->|GET /kyc/status/{transaction_id}| API
+    API --> R
+    API --> M[Prometheus /metrics]
+    M --> G[Grafana Dashboard]

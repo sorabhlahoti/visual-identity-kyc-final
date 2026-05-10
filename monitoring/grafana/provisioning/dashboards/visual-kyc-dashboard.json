@@ -1,0 +1,23 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {"datasource": "Prometheus", "fieldConfig": {"defaults": {}, "overrides": []}, "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}, "id": 1, "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}}, "pluginVersion": "11.3.0", "targets": [{"expr": "kyc_requests_total", "refId": "A"}], "title": "KYC Requests", "type": "stat"},
+    {"datasource": "Prometheus", "fieldConfig": {"defaults": {}, "overrides": []}, "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}, "id": 2, "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}}, "pluginVersion": "11.3.0", "targets": [{"expr": "kyc_accepted_total", "refId": "A"}], "title": "Accepted Async Jobs", "type": "stat"},
+    {"datasource": "Prometheus", "fieldConfig": {"defaults": {}, "overrides": []}, "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}, "id": 3, "options": {"reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}}, "pluginVersion": "11.3.0", "targets": [{"expr": "kyc_errors_total", "refId": "A"}], "title": "API Errors", "type": "stat"}
+  ],
+  "schemaVersion": 39,
+  "tags": ["kyc", "hackathon"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Visual KYC Dashboard",
+  "uid": "visual-kyc",
+  "version": 1,
+  "weekStart": ""
+}
