@@ -46,6 +46,7 @@ redpanda-data/
 # Docker / temp
 .tmp/
 tmp/
+images/
 images-tar*/
 
 # User test images - keep private biometric samples out of git

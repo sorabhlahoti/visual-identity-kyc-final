@@ -50,11 +50,11 @@ func main() {
 		log.Fatalf("kafka rest not ready: %v", err)
 	}
 
-	publisher := messaging.NewPrimaryWithAuditPublisher(
-		messaging.NewKafkaRESTPublisherWithOptions(cfg.KafkaRESTURL, time.Duration(cfg.KafkaPublishTimeoutSec)*time.Second, cfg.KafkaPublishRetries),
-		messaging.NewFilePublisher(cfg.EventLogPath),
-	)
-	processor := services.NewKYCService(cfg, embedder, vectors, metadata, publisher)
+	// Worker-side processing events are written to the local audit log only.
+	// Do NOT publish PROCESSING_STARTED / *_DECISION events back into the command
+	// topics (kyc_enroll / kyc_verify), otherwise local Kafka REST consumers can
+	// repeatedly consume audit records and make the queue look stuck.
+	processor := services.NewKYCService(cfg, embedder, vectors, metadata, messaging.NewFilePublisher(cfg.EventLogPath))
 	cb := callback.New(time.Duration(cfg.CallbackTimeoutMS) * time.Millisecond)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

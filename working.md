@@ -746,3 +746,21 @@ powershell -ExecutionPolicy Bypass -File .\scripts\debug_frontend_verify_windows
 ```
 
 The updated frontend prints the expected endpoint and expected Kafka topic before submitting, and it has a finite poll timeout so it no longer waits forever silently.
+
+## Hard reset when transaction stays ACCEPTED
+
+If a transaction is accepted but never reaches the worker, reset only the local command queue and restart the worker:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\k8s_hard_reset_pipeline_windows.ps1 -BuildApiWorker -InferenceMode arcface
+```
+
+Use a valid DOB format: `YYYY-MM-DD`, for example `1990-01-21`. Invalid dates such as `1990-21-01` are rejected by the patched API.
+
+Trace a transaction:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\k8s_trace_transaction_windows.ps1 -Txn txn_xxx
+```
+
+The worker no longer publishes processing/audit events back into `kyc_enroll` or `kyc_verify`. Those topics now remain command-only topics, so the worker will not repeatedly consume its own audit events.

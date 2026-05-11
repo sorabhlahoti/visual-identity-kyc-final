@@ -42,7 +42,11 @@ func (p *KafkaRESTPublisher) Publish(topic, transactionID, eventType string, pay
 	for attempt := 1; attempt <= p.retries; attempt++ {
 		status, respBody, err := p.do(context.Background(), http.MethodPost, p.baseURL+"/topics/"+topic, bytes.NewReader(b))
 		if err == nil && status >= 200 && status < 300 {
-			return nil
+			if err := validateProduceResponse(topic, respBody); err != nil {
+				lastErr = err
+			} else {
+				return nil
+			}
 		}
 		if err != nil {
 			lastErr = err
@@ -87,6 +91,35 @@ func (p *KafkaRESTPublisher) do(ctx context.Context, method, url string, body io
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(respBody), nil
+}
+
+func validateProduceResponse(topic, body string) error {
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		return nil
+	}
+	var resp struct {
+		Offsets []struct {
+			Partition int    `json:"partition"`
+			Offset    int64  `json:"offset"`
+			ErrorCode int    `json:"error_code"`
+			Error     string `json:"error"`
+		} `json:"offsets"`
+	}
+	if err := json.Unmarshal([]byte(trimmed), &resp); err != nil {
+		// Some Redpanda versions return a different success payload. Do not fail
+		// only because the success payload is not recognized.
+		return nil
+	}
+	if len(resp.Offsets) == 0 {
+		return fmt.Errorf("kafka rest publish topic=%s returned success without offsets body=%s", topic, trimmed)
+	}
+	for _, off := range resp.Offsets {
+		if off.ErrorCode != 0 || off.Error != "" {
+			return fmt.Errorf("kafka rest publish topic=%s record error_code=%d error=%s body=%s", topic, off.ErrorCode, off.Error, trimmed)
+		}
+	}
+	return nil
 }
 
 func WaitForKafkaREST(ctx context.Context, baseURL string, timeout time.Duration) error {

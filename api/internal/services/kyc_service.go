@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"visual-kyc/api/internal/config"
@@ -257,14 +259,21 @@ func ValidateInput(input domain.KYCInput) error {
 	if len(input.ImageBytes) == 0 {
 		return fmt.Errorf("image is required")
 	}
-	if input.Name == "" {
+	if strings.TrimSpace(input.Name) == "" {
 		return fmt.Errorf("name is required")
 	}
-	if input.DOB == "" {
+	if strings.TrimSpace(input.DOB) == "" {
 		return fmt.Errorf("dob is required")
 	}
-	if input.Gender == "" {
+	if _, err := time.Parse("2006-01-02", input.DOB); err != nil {
+		return fmt.Errorf("dob must be valid YYYY-MM-DD")
+	}
+	gender := strings.ToUpper(strings.TrimSpace(input.Gender))
+	if gender == "" {
 		return fmt.Errorf("gender is required")
+	}
+	if !regexp.MustCompile(`^(M|F|O|MALE|FEMALE|OTHER)$`).MatchString(gender) {
+		return fmt.Errorf("gender must be M, F, O, Male, Female, or Other")
 	}
 	return nil
 }
